@@ -73,6 +73,9 @@ jobs:
           FEEDNAME: qbittorrent
           PACKAGES: luci-app-qbittorrent qbittorrent qt6base qt6tools rblibtorrent
           NO_REFRESH_CHECK: 'true'
+          V: sc
+          BUILD_LOG: '1'
+          IGNORE_ERRORS: 'n m'
 
       - name: Collect built packages
         if: always()
@@ -97,7 +100,6 @@ jobs:
           name: logs-${{ matrix.arch }}-${{ matrix.sdk }}
           path: |
             logs/
-            bin/
           if-no-files-found: ignore
           retention-days: 7
 
