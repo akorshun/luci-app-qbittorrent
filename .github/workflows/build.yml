@@ -1,0 +1,132 @@
+name: Build OpenWrt packages
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - 'luci-app-qbittorrent/**'
+      - 'qbittorrent/**'
+      - 'qt6base/**'
+      - 'qt6tools/**'
+      - 'rblibtorrent/**'
+      - '.github/workflows/build.yml'
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag to publish artifacts to (optional)'
+        required: false
+        default: ''
+
+jobs:
+  build:
+    name: ${{ matrix.arch }} @ ${{ matrix.sdk }}
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        sdk: ['23.05.5']
+        arch:
+          - aarch64_cortex-a53
+          - aarch64_cortex-a72
+          - aarch64_cortex-a76
+          - aarch64_generic
+          - arm_arm1176jzf-s_vfp
+          - arm_arm926ej-s
+          - arm_cortex-a15_neon-vfpv4
+          - arm_cortex-a5_vfpv4
+          - arm_cortex-a7
+          - arm_cortex-a7_neon-vfpv4
+          - arm_cortex-a7_vfpv4
+          - arm_cortex-a8_vfpv3
+          - arm_cortex-a9
+          - arm_cortex-a9_neon
+          - arm_cortex-a9_vfpv3-d16
+          - arm_fa526
+          - arm_mpcore
+          - arm_xscale
+          - i386_pentium-mmx
+          - i386_pentium4
+          - mips64_octeonplus
+          - mips_24kc
+          - mips_4kec
+          - mips_mips32
+          - mipsel_24kc
+          - mipsel_24kc_24kf
+          - mipsel_74kc
+          - mipsel_mips32
+          - powerpc_464fp
+          - powerpc_8540
+          - riscv64_riscv64
+          - x86_64
+          - x86_geode
+          - x86_i486_pentium4
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Build packages with OpenWrt SDK
+        uses: openwrt/gh-action-sdk@v9
+        env:
+          ARCH: ${{ matrix.arch }}-${{ matrix.sdk }}
+          FEEDNAME: qbittorrent
+          PACKAGES: luci-app-qbittorrent qbittorrent qt6base qt6tools rblibtorrent
+          NO_REFRESH_CHECK: 'true'
+
+      - name: Collect built packages
+        if: always()
+        run: |
+          mkdir -p artifacts
+          find bin/ -type f \( -name "*.ipk" -o -name "*.apk" \) -exec cp -v {} artifacts/ \; || true
+          ls -la artifacts/ || true
+
+      - name: Upload artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ matrix.arch }}-${{ matrix.sdk }}
+          path: artifacts/*
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ matrix.arch }}-${{ matrix.sdk }}
+          path: |
+            logs/
+            bin/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  release:
+    name: Attach to release
+    needs: build
+    if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != '')
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: packages-*
+          merge-multiple: false
+
+      - name: Repack artifacts per arch
+        run: |
+          mkdir -p release
+          cd artifacts
+          for d in packages-*; do
+            arch="${d#packages-}"
+            (cd "$d" && zip -r "../../release/${arch}.zip" .) || true
+          done
+          ls -la ../release
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.release_tag || github.ref_name }}
+          files: release/*.zip
+          fail_on_unmatched_files: false
