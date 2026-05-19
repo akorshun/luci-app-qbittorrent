@@ -1,0 +1,30 @@
+From: Build fix
+Subject: [PATCH] widgets: guard QTipLabel::styleSheetParentDestroyed with style_stylesheet
+
+In Qt 6.11.1 the declaration of styleSheetParentDestroyed() in
+qtooltip_p.h is guarded by #if QT_CONFIG(style_stylesheet), but the
+definition in qtooltip.cpp is not. When qt6base is built without
+stylesheet support the compiler fails with:
+
+  error: no declaration matches 'void QTipLabel::styleSheetParentDestroyed()'
+
+Wrap the definition in the same preprocessor guard as the declaration.
+
+--- a/src/widgets/kernel/qtooltip.cpp
++++ b/src/widgets/kernel/qtooltip.cpp
+@@ -377,6 +377,7 @@ bool QTipLabel::tipChanged(const QPoint &pos, const QString &text, QObject *o)
+        return false;
+ }
+
++#if QT_CONFIG(style_stylesheet)
+ /** \internal
+   Cleanup the _q_stylesheet_parent property.
+  */
+@@ -385,6 +386,7 @@ void QTipLabel::styleSheetParentDestroyed()
+     setProperty("_q_stylesheet_parent", QVariant());
+     styleSheetParent = nullptr;
+ }
++#endif
+
+ /*!
+     Shows \a text as a tool tip, with the global position \a pos as
