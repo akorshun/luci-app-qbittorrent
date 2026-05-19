@@ -75,7 +75,6 @@ jobs:
           NO_REFRESH_CHECK: 'true'
           V: sc
           BUILD_LOG: '1'
-          IGNORE_ERRORS: 'n m'
 
       - name: Collect built packages
         if: always()
