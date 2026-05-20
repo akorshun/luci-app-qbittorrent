@@ -3,13 +3,7 @@ name: Build OpenWrt packages
 on:
   push:
     branches: [master, main]
-    paths:
-      - 'luci-app-qbittorrent/**'
-      - 'qbittorrent/**'
-      - 'qt6base/**'
-      - 'qt6tools/**'
-      - 'rblibtorrent/**'
-      - '.github/workflows/build.yml'
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
     inputs:
@@ -105,11 +99,26 @@ jobs:
           retention-days: 7
 
   release:
-    name: Attach to release
+    name: Publish release
     needs: build
-    if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != '')
     runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    if: |
+      !cancelled() &&
+      needs.build.result != 'failure' &&
+      (
+        (github.event_name == 'push' && github.ref == 'refs/heads/master') ||
+        (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != '') ||
+        github.event_name == 'release'
+      )
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -123,13 +132,119 @@ jobs:
           cd artifacts
           for d in packages-*; do
             arch="${d#packages-}"
-            (cd "$d" && zip -r "../../release/${arch}.zip" .) || true
+            (cd "$d" && zip -r "../../release/qbittorrent-${arch}.zip" .)
           done
-          ls -la ../release
+          ls -lh ../release
 
-      - name: Upload to release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.event.inputs.release_tag || github.ref_name }}
-          files: release/*.zip
-          fail_on_unmatched_files: false
+      - name: Determine release tag and type
+        id: tag
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && -n "${{ github.event.inputs.release_tag }}" ]]; then
+            echo "tag=${{ github.event.inputs.release_tag }}" >> $GITHUB_OUTPUT
+            echo "name=${{ github.event.inputs.release_tag }}" >> $GITHUB_OUTPUT
+            echo "prerelease=false" >> $GITHUB_OUTPUT
+            echo "rolling=false" >> $GITHUB_OUTPUT
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            echo "tag=$TAG" >> $GITHUB_OUTPUT
+            echo "name=$TAG" >> $GITHUB_OUTPUT
+            echo "prerelease=false" >> $GITHUB_OUTPUT
+            echo "rolling=false" >> $GITHUB_OUTPUT
+          else
+            SHORT=$(git rev-parse --short "$GITHUB_SHA")
+            echo "tag=nightly" >> $GITHUB_OUTPUT
+            echo "name=Nightly build ($SHORT)" >> $GITHUB_OUTPUT
+            echo "prerelease=true" >> $GITHUB_OUTPUT
+            echo "rolling=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build release notes
+        run: |
+          QBT_VER=$(grep -m1 '^PKG_VERSION' qbittorrent/Makefile | cut -d= -f2)
+          LIBT_VER=$(grep -m1 '^PKG_VERSION' rblibtorrent/Makefile | cut -d= -f2)
+          QT_VER=$(grep -m1 '^PKG_VERSION' qt6base/Makefile | cut -d= -f2)
+          SHORT=$(git rev-parse --short "$GITHUB_SHA")
+
+          cat > release_notes.md <<EOF
+          ## qBittorrent for OpenWrt
+
+          - **qBittorrent**: $QBT_VER
+          - **libtorrent-rasterbar**: $LIBT_VER
+          - **Qt6**: $QT_VER
+          - **Commit**: \`$SHORT\`
+
+          Сборка под OpenWrt **24.10.6** (формат \`.ipk\`) и **25.12.4** (формат \`.apk\`).
+
+          Скачайте zip под свою архитектуру + версию SDK, распакуйте и закиньте все файлы на роутер (например в \`/tmp/qbt\`).
+
+          ### Какой архив скачать?
+
+          Узнайте архитектуру роутера: \`opkg print-architecture\` (на 24.10) или \`apk info --print-arch\` (на 25.12). Имя файла: \`qbittorrent-<arch>-<sdk-version>.zip\`.
+
+          ### Установка на OpenWrt 24.10 (ipk)
+
+          \`\`\`sh
+          opkg update
+          cd /tmp/qbt
+          opkg install ./*.ipk
+          /etc/init.d/qbittorrent enable
+          /etc/init.d/qbittorrent start
+          \`\`\`
+
+          \`opkg\` сам подтянет boost, openssl и прочие зависимости из официальных репозиториев OpenWrt и поставит наши локальные пакеты в правильном порядке.
+
+          Если опкаджет ругается на отсутствующие зависимости (например \`boost-*\` нет в feed):
+          \`\`\`sh
+          # Включить feed packages (обычно уже включён)
+          sed -i 's/^#src/src/' /etc/opkg/distfeeds.conf
+          opkg update
+          \`\`\`
+
+          ### Установка на OpenWrt 25.12 (apk)
+
+          \`\`\`sh
+          apk update
+          cd /tmp/qbt
+          apk add --allow-untrusted ./*.apk
+          /etc/init.d/qbittorrent enable
+          /etc/init.d/qbittorrent start
+          \`\`\`
+
+          ### Ручной порядок (если автоматика не справилась)
+
+          1. \`boost-system boost-program_options boost-thread boost-filesystem boost-random libopenssl3\` — из официального репо.
+          2. \`libQt6Core\` → \`libQt6Network\` → \`libQt6Sql\` → \`libQt6Xml\` — Qt6 в порядке зависимостей.
+          3. \`qt6-plugin-libqopensslbackend\`, \`qt6-plugin-libqsqlite\` — Qt6-плагины.
+          4. \`rblibtorrent\` — libtorrent-rasterbar.
+          5. \`qbittorrent\` — сам демон (qbittorrent-nox).
+          6. \`luci-app-qbittorrent\` — веб-морда в LuCI.
+
+          ### После установки
+
+          - Web UI на \`http://<router-ip>:8080\`
+          - Логин: \`admin\`, временный пароль ищите в логах: \`logread | grep -i qbittorrent\`
+          - LuCI → Services → qBittorrent для настройки автозапуска и параметров
+
+          ---
+          Собрано автоматически через GitHub Actions с использованием [openwrt/gh-action-sdk](https://github.com/openwrt/gh-action-sdk).
+          EOF
+
+      - name: Delete previous nightly release
+        if: steps.tag.outputs.rolling == 'true'
+        run: |
+          gh release delete nightly --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" 2>/dev/null || true
+
+      - name: Create release
+        run: |
+          ARGS=(
+            --repo "$GITHUB_REPOSITORY"
+            --title "${{ steps.tag.outputs.name }}"
+            --notes-file release_notes.md
+          )
+          if [[ "${{ steps.tag.outputs.prerelease }}" == "true" ]]; then
+            ARGS+=(--prerelease)
+          fi
+          if [[ "${{ steps.tag.outputs.rolling }}" == "true" ]]; then
+            ARGS+=(--target "$GITHUB_SHA")
+          fi
+          gh release create "${{ steps.tag.outputs.tag }}" "${ARGS[@]}" release/*.zip
