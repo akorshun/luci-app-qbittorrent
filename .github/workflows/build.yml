@@ -58,14 +58,16 @@ jobs:
         run: |
           # Шаблоны имён файлов пакетов (формат: <pkgname>_<version>_<arch>.ipk/apk).
           # rblibtorrent публикуется как rblibtorrent2.0 (SO-suffix libtorrent).
+          # ipk: <name>_<ver>_<arch>.ipk  (подчёркивание)
+          # apk: <name>-<ver>.apk         (дефис) — формат 25.12+
           required_globs=(
-            'qbittorrent_*'
-            'libQt6Core_*'
-            'libQt6Network_*'
-            'libQt6Sql_*'
-            'libQt6Xml_*'
-            'rblibtorrent2.0_*'
-            'luci-app-qbittorrent_*'
+            'qbittorrent[-_]*'
+            'libQt6Core[-_]*'
+            'libQt6Network[-_]*'
+            'libQt6Sql[-_]*'
+            'libQt6Xml[-_]*'
+            'rblibtorrent2.0[-_]*'
+            'luci-app-qbittorrent[-_]*'
           )
           missing=()
           shopt -s nullglob
