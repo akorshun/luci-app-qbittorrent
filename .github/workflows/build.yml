@@ -56,16 +56,30 @@ jobs:
       - name: Verify required packages built
         if: success()
         run: |
-          required=(qbittorrent libQt6Core libQt6Network libQt6Sql libQt6Xml rblibtorrent luci-app-qbittorrent)
+          # Шаблоны имён файлов пакетов (формат: <pkgname>_<version>_<arch>.ipk/apk).
+          # rblibtorrent публикуется как rblibtorrent2.0 (SO-suffix libtorrent).
+          required_globs=(
+            'qbittorrent_*'
+            'libQt6Core_*'
+            'libQt6Network_*'
+            'libQt6Sql_*'
+            'libQt6Xml_*'
+            'rblibtorrent2.0_*'
+            'luci-app-qbittorrent_*'
+          )
           missing=()
-          for pkg in "${required[@]}"; do
-            if ! ls artifacts/${pkg}_* artifacts/${pkg}-* 2>/dev/null | grep -q .; then
-              missing+=("$pkg")
+          shopt -s nullglob
+          for glob in "${required_globs[@]}"; do
+            files=( artifacts/$glob )
+            if [ ${#files[@]} -eq 0 ]; then
+              missing+=("$glob")
             fi
           done
           if [ ${#missing[@]} -gt 0 ]; then
             echo "::error::Missing required packages: ${missing[*]}"
             echo "Build silently skipped these packages — likely a dep/defconfig issue."
+            echo "=== What we have ==="
+            ls -1 artifacts/
             exit 1
           fi
           echo "All required packages present."
