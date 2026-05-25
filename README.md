@@ -20,6 +20,18 @@ qBittorrent for OpenWrt
 | 24.10.6 | `.ipk` | GCC 13.3 / musl |
 | 25.12.4 | `.apk` | GCC 14.3 / musl |
 
+Поддерживаемые архитектуры:
+
+| Архитектура | Типичные устройства |
+|-------------|---------------------|
+| `aarch64_cortex-a53` | RPi 3/4, NanoPi R2S/R4S, бюджетные ARMv8 SoC |
+| `aarch64_cortex-a72` | RPi 4, RK3399, OrangePi 4 |
+| `aarch64_cortex-a76` | RK3588, NanoPi R6S, BPi-R3-Mini |
+| `aarch64_generic` | Generic ARMv8 (Mikrotik RB5009, Xiaomi AX9000 и др.) |
+| `x86_64` | x86 роутеры, мини-PC, виртуалки |
+
+> 32-битные ARM/MIPS/PowerPC не входят в сборку: на их дефолтных кернелах в OpenWrt не включён `KERNEL_IO_URING`, без которого недоступен `liburing` — обязательная зависимость `qt6base`. На таких таргетах нужно собирать Qt6 локально с патчем или с другим toolchain.
+
 Каждый zip покрывает одну архитектуру + версию SDK, имя: `qbittorrent-<arch>-<sdk>.zip`.
 
 ## Установка

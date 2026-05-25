@@ -20,41 +20,15 @@ jobs:
       fail-fast: false
       matrix:
         sdk: ['24.10.6', '25.12.4']
+        # Только архи, на которых qt6base реально собирается. На остальных gh-action-sdk
+        # помечает qt6base как unsupported (KERNEL_IO_URING выключен в дефолтном кернеле
+        # этих таргетов → liburing недоступен → qt6base скипается).
         arch:
           - aarch64_cortex-a53
           - aarch64_cortex-a72
           - aarch64_cortex-a76
           - aarch64_generic
-          - arm_arm1176jzf-s_vfp
-          - arm_arm926ej-s
-          - arm_cortex-a15_neon-vfpv4
-          - arm_cortex-a5_vfpv4
-          - arm_cortex-a7
-          - arm_cortex-a7_neon-vfpv4
-          - arm_cortex-a7_vfpv4
-          - arm_cortex-a8_vfpv3
-          - arm_cortex-a9
-          - arm_cortex-a9_neon
-          - arm_cortex-a9_vfpv3-d16
-          - arm_fa526
-          - arm_xscale
-          - i386_pentium-mmx
-          - i386_pentium4
-          - mips64_octeonplus
-          - mips_24kc
-          - mips_4kec
-          - mips_mips32
-          - mipsel_24kc
-          - mipsel_24kc_24kf
-          - mipsel_74kc
-          - mipsel_mips32
-          - powerpc_464fp
-          - riscv64_riscv64
           - x86_64
-        exclude:
-          # Не собирается на новом SDK (Qt6/libtorrent несовместимы с этими таргетами в 25.12)
-          - { arch: mips_4kec,        sdk: '25.12.4' }
-          - { arch: riscv64_riscv64,  sdk: '25.12.4' }
 
     steps:
       - name: Checkout source
